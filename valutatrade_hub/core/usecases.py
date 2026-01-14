@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from valutatrade_hub.decorators import log_action
 from valutatrade_hub.infra.database import DatabaseManager
@@ -67,8 +67,10 @@ class SystemCore:
         p_data = next(
             (p for p in all_p if p['user_id'] == self._current_user.user_id)
             , None)
-        self._current_portfolio = Portfolio(p_data['user_id'],
-                                            p_data['wallets']) if p_data else None
+        if p_data:
+            self._current_portfolio = Portfolio(p_data['user_id'], p_data['wallets'])
+        else:
+            self._current_portfolio = Portfolio(self._current_user.user_id, {})
 
     def _save_portfolio(self):
         if not self._current_portfolio:
@@ -78,7 +80,13 @@ class SystemCore:
             if p['user_id'] == self._current_user.user_id:
                 all_p[i] = self._current_portfolio.to_dict()
                 break
+        else:
+            all_p.append(self._current_portfolio.to_dict())
         self.db.save_portfolios(all_p)
+
+    def _get_rates_data(self):
+        data = self.db.load_rates()
+        return data.get("pairs", data)
 
     def get_portfolio_info(self, base_currency='USD'):
         if not self._current_user:
@@ -87,7 +95,7 @@ class SystemCore:
         # Проверяем, существует ли базовая валюта
         get_currency(base_currency)
 
-        rates = self.db.load_rates()
+        rates = self._get_rates_data()
         total = self._current_portfolio.get_total_value(rates, base_currency)
 
         wallet_info = []
@@ -121,8 +129,7 @@ class SystemCore:
 
         base_curr = self.settings.get("BASE_CURRENCY")
 
-        # Получение курса
-        rates = self.db.load_rates()
+        rates = self._get_rates_data()
         pair = f"{currency_code}_{base_curr}"
         rate_info = rates.get(pair)
 
@@ -159,11 +166,16 @@ class SystemCore:
             raise InsufficientFundsError(amount, 0, currency_code)
 
         base_curr = self.settings.get("BASE_CURRENCY")
-        rates = self.db.load_rates()
+
+        rates = self._get_rates_data()
         pair = f"{currency_code}_{base_curr}"
         rate = rates.get(pair, {}).get('rate', 0.0)
 
         revenue = amount * rate
+
+        if revenue <= 0:
+            raise ApiRequestError(f"Невозможно продать: курс {pair} "
+                                  f"равен 0 или не найден.")
 
         # Списание (проверка баланса внутри withdraw)
         wallet.withdraw(amount)
@@ -180,14 +192,14 @@ class SystemCore:
         get_currency(from_curr)
         get_currency(to_curr)
 
-        rates = self.db.load_rates()
+        rates = self._get_rates_data()
         pair = f"{from_curr}_{to_curr}".upper()
         data = rates.get(pair)
 
         if data:
             updated = datetime.fromisoformat(data['updated_at'])
             ttl = self.settings.get("RATES_TTL")
-            if (datetime.now() - updated).total_seconds() > ttl:
+            if (datetime.now(timezone.utc) - updated).total_seconds() > ttl:
                 # todo
                 pass
             return data['rate'], data['updated_at']
