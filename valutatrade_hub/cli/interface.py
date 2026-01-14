@@ -2,6 +2,11 @@ import shlex
 
 from prettytable import PrettyTable
 
+from valutatrade_hub.core.exceptions import (
+    ApiRequestError,
+    CurrencyNotFoundError,
+    InsufficientFundsError,
+)
 from valutatrade_hub.core.usecases import SystemCore
 
 
@@ -17,7 +22,6 @@ class CLI:
                 if not user_input:
                     continue
 
-                # shlex позволяет безопасно парсить строки с кавычками
                 parts = shlex.split(user_input)
                 command = parts[0].lower()
                 args = parts[1:]
@@ -35,9 +39,7 @@ class CLI:
                 print(f"Ошибка: {e}")
 
     def _get_prompt(self):
-        if self.core.current_user:
-            return self.core.current_user.username
-        return "guest"
+        return self.core.current_user.username if self.core.current_user else "guest"
 
     def _parse_args(self, args_list):
         """Превращает ['--key', 'value'] в {'key': 'value'}"""
@@ -45,95 +47,82 @@ class CLI:
         iterator = iter(args_list)
         for item in iterator:
             if item.startswith('--'):
-                key = item[2:]
                 try:
-                    value = next(iterator)
-                    parsed[key] = value
+                    parsed[item[2:]] = next(iterator)
                 except StopIteration:
-                    print(f"Предупреждение: аргумент {key} без значения")
+                    pass
         return parsed
 
     def _handle_command(self, command, args):
         kwargs = self._parse_args(args)
 
-        if command == 'register':
-            u = kwargs.get('username')
-            p = kwargs.get('password')
-            if u and p:
-                uid = self.core.register(u, p)
-                print(f"Пользователь '{u}' зарегистрирован (id={uid}). "
-                      f"Войдите через login.")
-            else:
-                print("Использование: register --username <name> --password <pass>")
+        # Блок обработки исключений доменной логики
+        try:
+            if command == 'register':
+                if 'username' in kwargs and 'password' in kwargs:
+                    uid = self.core.register(kwargs['username'], kwargs['password'])
+                    print(f"Пользователь зарегистрирован (id={uid})")
+                else:
+                    print("Usage: register --username X --password Y")
 
-        elif command == 'login':
-            u = kwargs.get('username')
-            p = kwargs.get('password')
-            if u and p:
-                name = self.core.login(u, p)
-                print(f"Вы вошли как '{name}'")
-            else:
-                print("Использование: login --username <name> --password <pass>")
+            elif command == 'login':
+                if 'username' in kwargs and 'password' in kwargs:
+                    name = self.core.login(kwargs['username'], kwargs['password'])
+                    print(f"Вы вошли как '{name}'")
+                else:
+                    print("Usage: login --username X --password Y")
 
-        elif command == 'show-portfolio':
-            base = kwargs.get('base', 'USD')
-            try:
+            elif command == 'show-portfolio':
+                base = kwargs.get('base', 'USD')
                 wallets, total = self.core.get_portfolio_info(base)
-                t = PrettyTable(['Currency', 'Balance', f'Value ({base})'])
+
+                t = PrettyTable(['Currency', 'Info', 'Balance', f'Value ({base})'])
+                t.align = "l"
                 for w in wallets:
-                    t.add_row([w[0], f"{w[1]:.4f}", f"{w[2]:.2f}"])
-                print(f"Портфель пользователя '{self.core.current_user.username}':")
+                    t.add_row([w['code'], w['display'],
+                               f"{w['balance']:.4f}", f"{w['value']:.2f}"])
                 print(t)
                 print(f"ИТОГО: {total:.2f} {base}")
-            except PermissionError as e:
-                print(e)
 
-        elif command == 'buy':
-            curr = kwargs.get('currency')
-            amt = kwargs.get('amount')
-            if curr and amt:
-                try:
-                    rate, cost = self.core.buy_currency(curr, float(amt))
-                    print(f"Покупка выполнена: {amt} {curr} по курсу {rate}")
-                    print(f"Потрачено (оценочно): {cost:.2f} USD")
-                except ValueError as e:
-                    print(f"Ошибка данных: {e}")
-                except PermissionError as e:
-                    print(e)
-            else:
-                print("Использование: buy --currency <BTC> --amount <0.05>")
-
-        elif command == 'sell':
-            curr = kwargs.get('currency')
-            amt = kwargs.get('amount')
-            if curr and amt:
-                try:
-                    rate, revenue = self.core.sell_currency(curr, float(amt))
-                    print(f"Продажа выполнена: {amt} {curr}")
-                    print(f"Выручено (оценочно): {revenue:.2f} USD")
-                except ValueError as e:
-                    print(f"Ошибка: {e}")
-                except PermissionError as e:
-                    print(e)
-            else:
-                print("Использование: sell --currency <BTC> --amount <0.05>")
-
-        elif command == 'get-rate':
-            fr = kwargs.get('from')
-            to = kwargs.get('to')
-            if fr and to:
-                rate, dt = self.core.get_rate(fr, to)
-                if rate:
-                    print(f"Курс {fr}->{to}: {rate} (обновлено: {dt})")
+            elif command == 'buy':
+                if 'currency' in kwargs and 'amount' in kwargs:
+                    rate, cost = self.core.buy_currency(
+                        kwargs['currency'], float(kwargs['amount']))
+                    print(f"Покупка успешна! Курс: {rate}, Списано: {cost:.2f} USD")
                 else:
-                    print(f"Курс {fr}->{to} не найден "
-                          f"(ParserService не работает или нет данных)")
+                    print("Usage: buy --currency BTC --amount 0.05")
+
+            elif command == 'sell':
+                if 'currency' in kwargs and 'amount' in kwargs:
+                    rate, rev = self.core.sell_currency(
+                        kwargs['currency'], float(kwargs['amount']))
+                    print(f"Продажа успешна! Выручено: {rev:.2f} USD")
+                else:
+                    print("Usage: sell --currency BTC --amount 0.05")
+
+            elif command == 'get-rate':
+                f, t = kwargs.get('from'), kwargs.get('to')
+                if f and t:
+                    rate, dt = self.core.get_rate(f, t)
+                    print(f"Курс {f}->{t}: {rate} (от {dt})")
+                else:
+                    print("Usage: get-rate --from USD --to BTC")
+
+            elif command == 'help':
+                print("Команды: "
+                      "register, login, buy, sell, show-portfolio, get-rate, exit")
             else:
-                print("Использование: get-rate --from USD --to BTC")
+                print(f"Неизвестная команда: {command}")
 
-        elif command == 'help':
-            print("Доступные команды: register, login, "
-                  "show-portfolio, buy, sell, get-rate, exit")
-
-        else:
-            print(f"Неизвестная команда: {command}")
+        # Обработка ожидаемых бизнес-ошибок
+        except InsufficientFundsError as e:
+            print(f"Ошибка операции: {e}")
+        except CurrencyNotFoundError as e:
+            print(f"Ошибка валюты: {e}. "
+                  f"Используйте общепринятые коды (USD, BTC, ETH).")
+        except ApiRequestError as e:
+            print(f"Ошибка сети: {e}")
+        except ValueError as e:
+            print(f"Ошибка данных: {e}")
+        except PermissionError as e:
+            print(f"Доступ запрещен: {e}")

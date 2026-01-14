@@ -2,6 +2,8 @@ import hashlib
 from datetime import datetime
 from typing import Dict
 
+from .exceptions import InsufficientFundsError
+
 
 class User:
     def __init__(self, user_id: int, username: str,
@@ -51,8 +53,7 @@ class User:
 class Wallet:
     def __init__(self, currency_code: str, balance: float = 0.0):
         self.currency_code = currency_code.upper()
-        self._balance = 0.0  # Инициализируем нулем, потом используем сеттер
-        self.balance = float(balance)  # Используем сеттер для валидации
+        self._balance = float(balance)
 
     @property
     def balance(self) -> float:
@@ -62,7 +63,7 @@ class Wallet:
     def balance(self, value: float):
         if value < 0:
             raise ValueError("Баланс не может быть отрицательным")
-        self._balance = value
+        self._balance = float(value)
 
     def deposit(self, amount: float):
         if amount <= 0:
@@ -72,9 +73,10 @@ class Wallet:
     def withdraw(self, amount: float):
         if amount <= 0:
             raise ValueError("Сумма снятия должна быть положительной")
-        if amount > self.balance:
-            raise ValueError(f"Недостаточно средств. Доступно: {self.balance}")
-        self.balance -= amount
+        if amount > self._balance:
+            # Используем кастомное исключение из Этапа 2
+            raise InsufficientFundsError(amount, self._balance, self.currency_code)
+        self._balance -= amount
 
     def get_balance_info(self) -> str:
         return f"{self.currency_code}: {self.balance:.4f}"
@@ -103,6 +105,10 @@ class Portfolio:
     def wallets(self) -> Dict[str, Wallet]:
         return self._wallets.copy()
 
+    @property
+    def user_id(self) -> int:
+        return self._user_id
+
     def get_wallet(self, currency_code: str) -> Wallet:
         return self._wallets.get(currency_code.upper())
 
@@ -118,19 +124,10 @@ class Portfolio:
         for wallet in self._wallets.values():
             if wallet.currency_code == base_currency:
                 total += wallet.balance
-                continue
-
-            # Ищем пару CURRENCY_BASE
-            pair = f"{wallet.currency_code}_{base_currency}"
-            rate_info = rates.get(pair)
-
-            if rate_info:
-                rate = rate_info.get('rate', 0.0)
-                total += wallet.balance * rate
             else:
-                # Попробуем обратный курс простейшим образом (для примера)
-                pass
-                # Если курса нет, считаем как 0 (или можно кидать ошибку)
+                pair = f"{wallet.currency_code}_{base_currency}"
+                rate = rates.get(pair, {}).get('rate', 0.0)
+                total += wallet.balance * rate
         return total
 
     def to_dict(self) -> dict:
