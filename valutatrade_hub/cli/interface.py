@@ -1,3 +1,5 @@
+import json
+import os
 import shlex
 
 from prettytable import PrettyTable
@@ -8,6 +10,8 @@ from valutatrade_hub.core.exceptions import (
     InsufficientFundsError,
 )
 from valutatrade_hub.core.usecases import SystemCore
+from valutatrade_hub.parser_service.config import ParserConfig
+from valutatrade_hub.parser_service.updater import RatesUpdater
 
 
 class CLI:
@@ -111,6 +115,58 @@ class CLI:
             elif command == 'help':
                 print("Команды: "
                       "register, login, buy, sell, show-portfolio, get-rate, exit")
+            elif command == 'update-rates':
+                source = kwargs.get('source')
+                print("Запуск обновления курсов (это может занять время)...")
+                updater = RatesUpdater()
+                count = updater.run_update(source_filter=source)
+                if count > 0:
+                    print(f"Обновление завершено. Обновлено пар: {count}")
+                else:
+                    print("Не удалось обновить курсы (см. логи). "
+                          "Возможно, отсутствует API Key или перебои сети.")
+
+            elif command == 'show-rates':
+                config = ParserConfig()
+                if not os.path.exists(config.RATES_FILE_PATH):
+                    print("Кэш курсов пуст. Выполните 'update-rates'.")
+                    return
+
+                with open(config.RATES_FILE_PATH, 'r') as f:
+                    data = json.load(f)
+
+                pairs = data.get("pairs", {})
+                last_refresh = data.get("last_refresh", "N/A")
+
+                # Фильтры
+                target_curr = kwargs.get('currency')
+                is_top = kwargs.get('top')
+
+                result_list = []
+                for pair, info in pairs.items():
+                    if target_curr and target_curr.upper() not in pair:
+                        continue
+                    result_list.append((pair, info['rate'], info['updated_at']))
+
+                # Сортировка
+                if is_top:
+                    # Сортируем по цене (rate) убыванию
+                    result_list.sort(key=lambda x: x[1], reverse=True)
+                    limit = int(is_top)
+                    result_list = result_list[:limit]
+                else:
+                    # По алфавиту
+                    result_list.sort(key=lambda x: x[0])
+
+                if not result_list:
+                    print(f"Курсы не найдены (фильтр: {target_curr or 'None'}).")
+                else:
+                    t = PrettyTable(['Pair', 'Rate (USD)', 'Updated At'])
+                    t.align = "l"
+                    for r in result_list:
+                        t.add_row([r[0], f"{r[1]:.5f}", r[2]])
+                    print(f"Актуальные курсы (обновлено: {last_refresh}):")
+                    print(t)
             else:
                 print(f"Неизвестная команда: {command}")
 

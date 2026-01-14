@@ -1,10 +1,50 @@
 {
+  "pairs": {
     "BTC_USD": {
-        "rate": 65000.0,
-        "updated_at": "2024-01-01T12:00:00"
+      "rate": 96192.0,
+      "updated_at": "2026-01-14T14:48:06.595435+00:00",
+      "source": "CoinGecko"
     },
     "ETH_USD": {
-        "rate": 3500.0,
-        "updated_at": "2024-01-01T12:00:00"
+      "rate": 3333.31,
+      "updated_at": "2026-01-14T14:48:06.595435+00:00",
+      "source": "CoinGecko"
+    },
+    "SOL_USD": {
+      "rate": 146.24,
+      "updated_at": "2026-01-14T14:48:06.595435+00:00",
+      "source": "CoinGecko"
+    },
+    "USDT_USD": {
+      "rate": 0.999606,
+      "updated_at": "2026-01-14T14:48:06.595435+00:00",
+      "source": "CoinGecko"
+    },
+    "EUR_USD": {
+      "rate": 1.165093790050099,
+      "updated_at": "2026-01-14T14:48:06.858181+00:00",
+      "source": "ExchangeRate-API"
+    },
+    "GBP_USD": {
+      "rate": 1.3440860215053763,
+      "updated_at": "2026-01-14T14:48:06.858181+00:00",
+      "source": "ExchangeRate-API"
+    },
+    "RUB_USD": {
+      "rate": 0.012685686739651652,
+      "updated_at": "2026-01-14T14:48:06.858181+00:00",
+      "source": "ExchangeRate-API"
+    },
+    "JPY_USD": {
+      "rate": 0.006289557384978148,
+      "updated_at": "2026-01-14T14:48:06.858181+00:00",
+      "source": "ExchangeRate-API"
+    },
+    "CNY_USD": {
+      "rate": 0.14309836581666238,
+      "updated_at": "2026-01-14T14:48:06.858181+00:00",
+      "source": "ExchangeRate-API"
     }
+  },
+  "last_refresh": "2026-01-14T14:48:06.595435+00:00"
 }
